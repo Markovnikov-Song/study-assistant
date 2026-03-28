@@ -1,0 +1,13 @@
+streamlit
+sqlalchemy
+psycopg2-binary
+bcrypt
+openai
+langchain-postgres
+langchain-openai
+langchain-core
+pdfplumber
+python-docx
+python-pptx
+pytesseract
+Pillow
