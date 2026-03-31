@@ -14,6 +14,7 @@ from database import (
     Subject,
     get_session,
 )
+from sqlalchemy.orm import joinedload
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +213,7 @@ def get_user_sessions(user_id: int) -> List[dict]:
     with get_session() as session:
         sessions = (
             session.query(ConversationSession)
+            .options(joinedload(ConversationSession.subject))
             .filter_by(user_id=user_id)
             .order_by(ConversationSession.created_at.desc())
             .all()
@@ -293,24 +295,26 @@ def export_session_markdown(session_id: int, user_id: int) -> str:
     with get_session() as session:
         conv_session = (
             session.query(ConversationSession)
+            .options(joinedload(ConversationSession.subject))
             .filter_by(id=session_id, user_id=user_id)
             .first()
         )
         if conv_session is None:
             return ""
+        title = conv_session.title or f"对话 #{session_id}"
+        subject_name = conv_session.subject.name if conv_session.subject else "未关联学科"
+        session_type = conv_session.session_type
+        created_at = conv_session.created_at.strftime("%Y-%m-%d %H:%M:%S")
         history = (
             session.query(ConversationHistory)
             .filter_by(session_id=session_id)
             .order_by(ConversationHistory.created_at.asc())
             .all()
         )
-        title = conv_session.title or f"对话 #{session_id}"
-        subject_name = conv_session.subject.name if conv_session.subject else "未关联学科"
-        created_at = conv_session.created_at.strftime("%Y-%m-%d %H:%M:%S")
         lines: List[str] = [
             f"# {title}", "",
             f"- **学科**：{subject_name}",
-            f"- **类型**：{conv_session.session_type}",
+            f"- **类型**：{session_type}",
             f"- **创建时间**：{created_at}", "", "---", "",
         ]
         for msg in history:
@@ -356,36 +360,47 @@ def export_session_word(session_id: int, user_id: int) -> bytes:
     with get_session() as session:
         conv_session = (
             session.query(ConversationSession)
+            .options(joinedload(ConversationSession.subject))
             .filter_by(id=session_id, user_id=user_id)
             .first()
         )
         if conv_session is None:
             return b""
-        history = (
+        # 在 session 内提前取出所有需要的数据
+        title = conv_session.title or f"对话 #{session_id}"
+        subject_name = conv_session.subject.name if conv_session.subject else "未关联学科"
+        session_type = conv_session.session_type
+        created_at_str = conv_session.created_at.strftime("%Y-%m-%d %H:%M")
+        history_rows = (
             session.query(ConversationHistory)
             .filter_by(session_id=session_id)
             .order_by(ConversationHistory.created_at.asc())
             .all()
         )
+        history_data = [
+            {
+                "role": h.role,
+                "content": h.content,
+                "sources": h.sources,
+                "ts": h.created_at.strftime("%H:%M:%S"),
+            }
+            for h in history_rows
+        ]
 
     doc = DocxDocument()
-    title = conv_session.title or f"对话 #{session_id}"
-    subject_name = conv_session.subject.name if conv_session.subject else "未关联学科"
-
     doc.add_heading(title, 0)
-    doc.add_paragraph(f"学科：{subject_name}　类型：{conv_session.session_type}　时间：{conv_session.created_at.strftime('%Y-%m-%d %H:%M')}")
+    doc.add_paragraph(f"学科：{subject_name}　类型：{session_type}　时间：{created_at_str}")
     doc.add_paragraph("─" * 40)
 
-    for msg in history:
-        role_label = "用户" if msg.role == "user" else "助手"
-        ts = msg.created_at.strftime("%H:%M:%S")
-        h = doc.add_heading(f"{role_label}  {ts}", level=2)
+    for msg in history_data:
+        role_label = "用户" if msg["role"] == "user" else "助手"
+        h = doc.add_heading(f"{role_label}  {msg['ts']}", level=2)
         h.runs[0].font.size = Pt(12)
-        doc.add_paragraph(msg.content)
-        if msg.sources:
+        doc.add_paragraph(msg["content"])
+        if msg["sources"]:
             p = doc.add_paragraph("参考来源：")
             p.runs[0].bold = True
-            for src in msg.sources:
+            for src in msg["sources"]:
                 doc.add_paragraph(f"  · {src.get('filename', '')}（片段 {src.get('chunk_index', '')}）")
         doc.add_paragraph("")
 
