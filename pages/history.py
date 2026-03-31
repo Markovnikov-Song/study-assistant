@@ -11,6 +11,8 @@ from utils import (
     get_session_history,
     delete_session,
     export_session_markdown,
+    export_session_html,
+    export_session_word,
 )
 
 # ── 登录检查 ──────────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ def _render_sessions(session_list: list, uid: int) -> None:
                     st.divider()
 
             # 操作按钮
-            col_del, col_export, _ = st.columns([1, 1, 6])
+            col_del, col_md, col_html, col_word = st.columns([1, 1, 1, 1])
 
             with col_del:
                 with st.popover("删除"):
@@ -62,16 +64,27 @@ def _render_sessions(session_list: list, uid: int) -> None:
                         else:
                             st.error(result["error"])
 
-            with col_export:
+            with col_md:
                 md_content = export_session_markdown(s["id"], uid)
                 if md_content:
-                    st.download_button(
-                        label="导出",
-                        data=md_content,
-                        file_name=f"session_{s['id']}.md",
-                        mime="text/markdown",
-                        key=f"export_session_{s['id']}",
-                    )
+                    st.download_button("📄 MD", data=md_content,
+                        file_name=f"session_{s['id']}.md", mime="text/markdown",
+                        key=f"export_md_{s['id']}")
+
+            with col_html:
+                html_content = export_session_html(s["id"], uid)
+                if html_content:
+                    st.download_button("🌐 HTML", data=html_content,
+                        file_name=f"session_{s['id']}.html", mime="text/html",
+                        key=f"export_html_{s['id']}")
+
+            with col_word:
+                word_bytes = export_session_word(s["id"], uid)
+                if word_bytes:
+                    st.download_button("📝 Word", data=word_bytes,
+                        file_name=f"session_{s['id']}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"export_word_{s['id']}")
 
 
 # ── 获取会话列表 ──────────────────────────────────────────────────────────

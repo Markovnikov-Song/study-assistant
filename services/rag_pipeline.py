@@ -226,8 +226,9 @@ class RAGPipeline:
 
         top_score = max((s.score for s in sources), default=0.0)
 
-        # 3. 相关性阈值判断
-        if not sources or all(s.score < threshold for s in sources):
+        # 3. 相关性阈值判断（PGVector 返回距离，距离越小越相关）
+        # 用 1 - distance 近似 cosine similarity，低于阈值则认为相关性不足
+        if not sources or all((1 - s.score) < threshold for s in sources):
             return RAGResult(
                 needs_confirmation=True,
                 top_score=top_score,
