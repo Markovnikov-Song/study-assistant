@@ -294,15 +294,9 @@ class ExamService:
 
     def generate_predicted_paper(self, subject_id: int, user_id: int) -> str:
         """
-        基于历年题分析考点分布，生成预测试卷（Markdown 格式）。
-
-        需求：14.1, 14.2
-
-        :param subject_id: 学科 ID
-        :param user_id: 用户 ID
-        :return: Markdown 格式预测试卷，无历年题时返回空字符串
+        生成预测试卷。有历年题时结合历年题分析考点，无历年题时基于学科资料出题。
         """
-        from database import get_session, PastExamQuestion
+        from database import get_session, PastExamQuestion, Chunk
 
         with get_session() as session:
             questions = (
@@ -310,34 +304,53 @@ class ExamService:
                 .filter(PastExamQuestion.subject_id == subject_id)
                 .all()
             )
-            if not questions:
-                return ""
-
+            has_past_exams = len(questions) > 0
             questions_text = "\n\n".join(
                 f"第{q.question_number}题：{q.content}"
                 + (f"\n参考答案：{q.answer}" if q.answer else "")
                 for q in questions
+            ) if has_past_exams else ""
+
+            # 同时取学科资料作为补充
+            chunk_rows = (
+                session.query(Chunk)
+                .filter(Chunk.subject_id == subject_id)
+                .order_by(Chunk.chunk_index)
+                .limit(30)
+                .all()
             )
+            chunks_text = "\n\n".join(row.content for row in chunk_rows)
+
+        if not has_past_exams and not chunks_text:
+            return ""
+
+        if has_past_exams:
+            system_prompt = (
+                "你是一个专业的考试分析与出题助手。请根据以下历年题目和学科资料，"
+                "分析考点分布和题型比例，然后生成一份预测试卷。\n\n"
+                "要求：\n"
+                "1. 先简要分析考点分布和题型规律\n"
+                "2. 生成预测试卷，题型和分值比例参考历年规律\n"
+                "3. 每道题附上参考答案\n"
+                "4. 使用 Markdown 格式输出"
+            )
+            user_content = f"历年题目：\n{questions_text}\n\n学科资料：\n{chunks_text}"
+        else:
+            system_prompt = (
+                "你是一个专业的出题助手。请根据以下学科资料，"
+                "分析核心知识点，生成一份综合性模拟试卷。\n\n"
+                "要求：\n"
+                "1. 覆盖资料中的主要知识点\n"
+                "2. 题型多样（选择题、填空题、简答题等）\n"
+                "3. 每道题附上参考答案\n"
+                "4. 使用 Markdown 格式输出"
+            )
+            user_content = f"学科资料：\n{chunks_text}"
 
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "你是一个专业的考试分析与出题助手。请根据以下历年题目，"
-                    "分析考点分布和题型比例，然后生成一份预测试卷。\n\n"
-                    "要求：\n"
-                    "1. 先简要分析考点分布和题型规律\n"
-                    "2. 生成预测试卷，题型和分值比例参考历年规律\n"
-                    "3. 每道题附上参考答案\n"
-                    "4. 使用 Markdown 格式输出"
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"历年题目：\n{questions_text}",
-            },
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
         ]
-
         return self._llm_service.chat(messages)
 
     # ------------------------------------------------------------------

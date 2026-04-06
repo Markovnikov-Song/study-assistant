@@ -469,19 +469,14 @@ with tab_gen:
     gen_tab1, gen_tab2 = st.tabs(["预测试卷", "自定义出题"])
 
     with gen_tab1:
-        st.markdown("基于已上传的历年题，AI 分析考点分布自动生成模拟试卷。")
-        _exam_files = _exam_svc.list_past_exam_files(subject_id=subject_id, user_id=user_id)
-        _has_exams = any(f["status"] == "completed" and f["question_count"] > 0 for f in _exam_files)
-        if not _has_exams:
-            st.warning("请先在「历年题」标签上传并处理历年题文件。")
-        else:
-            if st.button("生成预测试卷", key="gen_predicted", type="primary"):
-                with st.spinner("正在生成…"):
-                    _result = _exam_svc.generate_predicted_paper(subject_id=subject_id, user_id=user_id)
-                if _result:
-                    st.session_state["predicted_paper"] = _result
-                else:
-                    st.error("生成失败，请稍后重试。")
+        st.markdown("AI 分析历年题考点分布（若有）和学科资料，自动生成模拟试卷。")
+        if st.button("生成预测试卷", key="gen_predicted", type="primary"):
+            with st.spinner("正在生成…"):
+                _result = _exam_svc.generate_predicted_paper(subject_id=subject_id, user_id=user_id)
+            if _result:
+                st.session_state["predicted_paper"] = _result
+            else:
+                st.warning("暂无学科资料或历年题，请先上传资料。")
             if st.session_state.get("predicted_paper"):
                 st.markdown(st.session_state["predicted_paper"])
                 st.download_button("导出 Markdown", data=st.session_state["predicted_paper"],
