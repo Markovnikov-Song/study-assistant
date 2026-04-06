@@ -290,13 +290,7 @@ def get_session_history(session_id: int, user_id: int) -> List[dict]:
 
 
 def delete_session(session_id: int, user_id: int) -> dict:
-    """
-    删除指定对话会话（强制校验 user_id）。
-
-    :param session_id: 会话 ID
-    :param user_id: 用户 ID（用于权限校验）
-    :return: {"success": True} 或 {"success": False, "error": "..."}
-    """
+    """删除指定对话会话（强制校验 user_id）。"""
     with get_session() as session:
         conv_session = (
             session.query(ConversationSession)
@@ -305,9 +299,33 @@ def delete_session(session_id: int, user_id: int) -> dict:
         )
         if conv_session is None:
             return {"success": False, "error": "会话不存在或无权限删除"}
-
         session.delete(conv_session)
         return {"success": True}
+
+
+def delete_message(message_id: int, user_id: int) -> dict:
+    """删除单条对话消息（验证归属）。"""
+    with get_session() as session:
+        msg = session.query(ConversationHistory).get(message_id)
+        if msg is None:
+            return {"success": False, "error": "消息不存在"}
+        # 验证归属：通过 session → user
+        conv_session = session.query(ConversationSession).filter_by(
+            id=msg.session_id, user_id=user_id
+        ).first()
+        if conv_session is None:
+            return {"success": False, "error": "无权限删除"}
+        session.delete(msg)
+        return {"success": True}
+
+
+def delete_all_sessions(user_id: int) -> dict:
+    """删除当前用户的所有对话会话。"""
+    with get_session() as session:
+        sessions = session.query(ConversationSession).filter_by(user_id=user_id).all()
+        for s in sessions:
+            session.delete(s)
+        return {"success": True, "count": len(sessions)}
 
 
 def export_session_markdown(session_id: int, user_id: int) -> str:

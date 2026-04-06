@@ -31,7 +31,7 @@ st.title(subject["name"])
 if subject.get("category"):
     st.caption(f"分类：{subject['category']}")
 
-tab_chat, tab_docs = st.tabs(["💬 学习助手", "📁 资料管理"])
+tab_chat, tab_docs, tab_exams, tab_gen = st.tabs(["💬 学习助手", "📁 资料管理", "📝 历年题", "🤖 AI 出题"])
 
 # =============================================================================
 # 资料管理
@@ -368,3 +368,113 @@ with tab_chat:
                     delete_session(cur_sid, user_id)
                     st.session_state.pop("current_session_id", None)
                     st.rerun()
+
+# =============================================================================
+# 历年题管理
+# =============================================================================
+with tab_exams:
+    from services.exam_service import ExamService
+    exam_service = ExamService()
+
+    st.subheader("上传历年题")
+    exam_file = st.file_uploader(
+        "选择文件（PDF、图片、Word）",
+        type=["pdf", "jpg", "jpeg", "png", "docx"],
+        key="exam_upload",
+    )
+    if exam_file is not None:
+        with st.spinner(f"正在处理「{exam_file.name}」…"):
+            result = exam_service.process_past_exam_file(
+                file_bytes=exam_file.read(),
+                filename=exam_file.name,
+                subject_id=subject_id,
+                user_id=user_id,
+            )
+        if result["success"]:
+            st.success(f"处理成功，共识别 {result['question_count']} 道题目。")
+        else:
+            st.error(f"处理失败：{result['error']}")
+
+    st.divider()
+    st.subheader("历年题列表")
+    exam_files = exam_service.list_past_exam_files(subject_id=subject_id, user_id=user_id)
+    if not exam_files:
+        st.info("暂无历年题，请上传文件。")
+    else:
+        status_map = {"pending": "⏳", "processing": "🔄", "completed": "✅", "failed": "❌"}
+        for f in exam_files:
+            with st.container(border=True):
+                c1, c2 = st.columns([8, 1])
+                with c1:
+                    st.write(f"**{f['filename']}**")
+                    st.caption(f"{status_map.get(f['status'], '')} {f['question_count']} 道题　{f['created_at'].strftime('%Y-%m-%d %H:%M')}")
+                with c2:
+                    with st.popover("删除"):
+                        st.warning(f"确定删除？")
+                        if st.button("确认", key=f"del_exam_{f['id']}", type="primary"):
+                            r = exam_service.delete_past_exam_file(f["id"], subject_id, user_id)
+                            if r["success"]:
+                                st.rerun()
+                if f["status"] == "completed" and f["question_count"] > 0:
+                    with st.expander(f"查看题目（{f['question_count']} 道）"):
+                        from database import get_session as _db, PastExamQuestion
+                        with _db() as _s:
+                            qs = _s.query(PastExamQuestion).filter_by(exam_file_id=f["id"]).all()
+                            for q in qs:
+                                st.markdown(f"**第 {q.question_number} 题**　{q.content[:100]}{'…' if len(q.content) > 100 else ''}")
+
+# =============================================================================
+# AI 出题
+# =============================================================================
+with tab_gen:
+    from services.exam_service import ExamService as _ES
+    _exam_svc = _ES()
+
+    gen_tab1, gen_tab2 = st.tabs(["预测试卷", "自定义出题"])
+
+    with gen_tab1:
+        st.markdown("基于已上传的历年题，AI 分析考点分布自动生成模拟试卷。")
+        _exam_files = _exam_svc.list_past_exam_files(subject_id=subject_id, user_id=user_id)
+        _has_exams = any(f["status"] == "completed" and f["question_count"] > 0 for f in _exam_files)
+        if not _has_exams:
+            st.warning("请先在「历年题」标签上传并处理历年题文件。")
+        else:
+            if st.button("生成预测试卷", key="gen_predicted", type="primary"):
+                with st.spinner("正在生成…"):
+                    _result = _exam_svc.generate_predicted_paper(subject_id=subject_id, user_id=user_id)
+                if _result:
+                    st.session_state["predicted_paper"] = _result
+                else:
+                    st.error("生成失败，请稍后重试。")
+            if st.session_state.get("predicted_paper"):
+                st.markdown(st.session_state["predicted_paper"])
+                st.download_button("导出 Markdown", data=st.session_state["predicted_paper"],
+                    file_name=f"{subject['name']}_预测试卷.md", mime="text/markdown",
+                    key="dl_predicted")
+
+    with gen_tab2:
+        q_types = st.multiselect("题型", ["选择题", "填空题", "简答题", "计算题"],
+            default=["选择题", "简答题"], key="custom_types")
+        q_count = st.slider("数量", 1, 20, 5, key="custom_count")
+        q_diff = st.radio("难度", ["简单", "中等", "困难"], index=1, horizontal=True, key="custom_diff")
+        q_topic = st.text_input("考点/主题（可选）", key="custom_topic")
+
+        if st.button("生成题目", key="gen_custom", type="primary"):
+            if not q_types:
+                st.warning("请至少选择一种题型。")
+            else:
+                with st.spinner("正在生成…"):
+                    _result = _exam_svc.generate_custom_questions(
+                        subject_id=subject_id, user_id=user_id,
+                        question_types=q_types, count=q_count,
+                        difficulty=q_diff, topic=q_topic.strip() or "全部考点",
+                    )
+                if _result:
+                    st.session_state["custom_questions"] = _result
+                else:
+                    st.error("生成失败，请稍后重试。")
+        if st.session_state.get("custom_questions"):
+            st.markdown(st.session_state["custom_questions"])
+            st.download_button("导出 Markdown", data=st.session_state["custom_questions"],
+                file_name=f"{subject['name']}_自定义题目.md", mime="text/markdown",
+                key="dl_custom")
