@@ -312,14 +312,33 @@ class ExamService:
             ) if has_past_exams else ""
 
             # 同时取学科资料作为补充
-            chunk_rows = (
-                session.query(Chunk)
-                .filter(Chunk.subject_id == subject_id)
-                .order_by(Chunk.chunk_index)
-                .limit(30)
-                .all()
-            )
-            chunks_text = "\n\n".join(row.content for row in chunk_rows)
+        # 用 RAG 检索最相关的 chunks，而不是顺序取前 30 个
+        # 先让 LLM 提取知识点摘要，再基于摘要出题
+        chunk_rows = (
+            session.query(Chunk)
+            .filter(Chunk.subject_id == subject_id)
+            .order_by(Chunk.chunk_index)
+            .limit(30)
+            .all()
+        )
+        raw_chunks = [row.content for row in chunk_rows]
+
+        # 先让 LLM 从原始 chunks 中提取干净的知识点列表
+        if raw_chunks:
+            summary_messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "请从以下学科资料中提取核心知识点，整理成清晰的列表。"
+                        "忽略乱码、OCR 错误和无法理解的内容，只保留能理解的知识点。"
+                        "每个知识点一行，格式：- 知识点名称：简要说明"
+                    ),
+                },
+                {"role": "user", "content": "\n\n".join(raw_chunks[:4000])},
+            ]
+            chunks_text = self._llm_service.chat(summary_messages)
+        else:
+            chunks_text = ""
 
         if not has_past_exams and not chunks_text:
             return ""
