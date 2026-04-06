@@ -29,12 +29,16 @@ class MindMapService:
         if not chunks:
             raise ValueError("所选资料暂无可用内容")
 
-        # 均匀采样最多 60 个块，覆盖全书而不只是开头
-        if len(chunks) > 60:
-            step = len(chunks) // 60
-            selected = chunks[::step][:60]
-        else:
+        # 均匀采样覆盖全书，确保首尾都包含
+        max_chunks = 60
+        if len(chunks) <= max_chunks:
             selected = chunks
+        else:
+            # 用 linspace 确保均匀分布且包含最后一个 chunk
+            import math
+            indices = [round(i * (len(chunks) - 1) / (max_chunks - 1)) for i in range(max_chunks)]
+            indices = sorted(set(indices))  # 去重并排序
+            selected = [chunks[i] for i in indices]
         context = "\n\n".join(selected)
 
         messages = [
