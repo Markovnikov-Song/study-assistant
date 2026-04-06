@@ -44,7 +44,7 @@ guide_page = st.Page("pages/guide.py", title="新手教程", icon="📖")
 user = AuthService().get_current_user()
 
 if not user:
-    pg = st.navigation([login_page])
+    pg = st.navigation([login_page, guide_page])
 else:
     # 侧边栏：用户信息与登出
     with st.sidebar:
