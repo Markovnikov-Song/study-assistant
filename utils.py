@@ -472,6 +472,7 @@ def get_subject_sessions(subject_id: int, user_id: int, session_type: str = None
         return [
             {
                 "id": s.id,
+                "subject_id": s.subject_id,
                 "title": s.title or f"对话 #{s.id}",
                 "session_type": s.session_type,
                 "type_label": type_labels.get(s.session_type, s.session_type),

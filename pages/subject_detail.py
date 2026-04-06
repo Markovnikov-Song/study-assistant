@@ -142,9 +142,35 @@ with tab_chat:
             is_cur = s["id"] == st.session_state.get("current_session_id")
             label = f"{'▶ ' if is_cur else ''}{s['type_label']} {s['title']}"
             ts = s["created_at"].strftime("%m-%d %H:%M")
-            if st.button(f"{label}  {ts}", key=f"hist_{s['id']}", use_container_width=True):
-                st.session_state["current_session_id"] = s["id"]
-                st.rerun()
+            col_switch, col_view = st.columns([3, 1])
+            with col_switch:
+                if st.button(f"{label}  {ts}", key=f"hist_{s['id']}", use_container_width=True):
+                    st.session_state["current_session_id"] = s["id"]
+                    st.rerun()
+            with col_view:
+                if st.button("👁", key=f"view_{s['id']}", help="展开查看"):
+                    st.session_state[f"expand_hist_{s['id']}"] = not st.session_state.get(f"expand_hist_{s['id']}", False)
+            if st.session_state.get(f"expand_hist_{s['id']}"):
+                with st.expander(f"📖 {s['title']}", expanded=True):
+                    hist_msgs = get_session_history(s["id"], user_id)
+                    if not hist_msgs:
+                        st.caption("暂无记录")
+                    elif s["session_type"] == "mindmap":
+                        last = next((m["content"] for m in reversed(hist_msgs) if m["role"] == "assistant"), None)
+                        if last:
+                            try:
+                                from streamlit_markmap import markmap
+                                markmap(last, height=300)
+                            except ImportError:
+                                st.markdown(last)
+                            with st.expander("📋 查看源码"):
+                                st.code(last, language="markdown")
+                    else:
+                        for msg in hist_msgs:
+                            role = "🧑 用户" if msg["role"] == "user" else "🤖 助手"
+                            st.markdown(f"**{role}**")
+                            st.markdown(msg["content"])
+                            st.divider()
 
     # 模式选择 + 通用知识开关
     mode_col, toggle_col = st.columns([3, 2])
@@ -169,19 +195,25 @@ with tab_chat:
     # 确保当前会话类型匹配
     past = get_subject_sessions(subject_id, user_id)
     cur_sid = st.session_state.get("current_session_id")
-    if cur_sid:
-        past_types = {s["id"]: s["session_type"] for s in past}
-        if past_types.get(cur_sid) and past_types[cur_sid] != session_type:
-            cur_sid = None
-            st.session_state.pop("current_session_id", None)
+
+    # 获取当前会话的实际类型（优先用已有会话的类型）
+    past_types = {s["id"]: s["session_type"] for s in past}
+    actual_session_type = past_types.get(cur_sid) if cur_sid else None
+
+    # 如果有已选会话且类型与 radio 不同，自动切换 radio 到对应模式
+    if actual_session_type and actual_session_type != session_type:
+        # 不清除会话，而是用会话的实际类型来显示内容
+        display_type = actual_session_type
+    else:
+        display_type = session_type
 
     if not cur_sid:
         cur_sid = None  # 懒创建，提交时才建
 
     history_msgs = get_session_history(cur_sid, user_id) if cur_sid else []
 
-    # 显示消息
-    if session_type == "mindmap":
+    # 显示消息（用 display_type 而不是 session_type）
+    if display_type == "mindmap":
         last_answer = next(
             (m["content"] for m in reversed(history_msgs) if m["role"] == "assistant"), None
         )
@@ -194,7 +226,7 @@ with tab_chat:
             st.download_button("导出 Markdown", data=last_answer,
                 file_name=f"{subject['name']}_mindmap.md", mime="text/markdown",
                 key="mindmap_dl")
-            st.caption("💡 导出为图片：将下方代码粘贴到 [markmap.js.org](https://markmap.js.org/repl) → 右上角导出 PNG/SVG；或粘贴到 [markmap.zuozuozuo.top](https://markmap.zuozuozuo.top) 直接下载 PNG。")
+            st.caption("💡 导出为图片：将下方代码粘贴到 [markmap.js.org](https://markmap.js.org/repl) 可下载 SVG；SVG 转 PNG 可用 [svgtopng.com](https://svgtopng.com)，或直接截图保存。")
             with st.expander("📋 查看 / 复制 Markdown 源码"):
                 st.code(last_answer, language="markdown")
     else:

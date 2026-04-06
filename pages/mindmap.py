@@ -8,6 +8,8 @@ import streamlit as st
 from utils import require_login, get_subject
 from services.document_service import DocumentService
 from services.mindmap_service import MindMapService
+from services.rag_pipeline import RAGPipeline
+from database import get_session as db_session, ConversationHistory
 
 # ── 登录检查 ──────────────────────────────────────────────────────────────
 user = require_login()
@@ -47,11 +49,20 @@ if selected != "全部资料":
 if st.button("生成思维导图", key="mindmap_page_generate", type="primary"):
     with st.spinner("正在生成思维导图…"):
         try:
-            mermaid_text = MindMapService().generate_from_subject(
+            mindmap_text = MindMapService().generate_from_subject(
                 subject_id=subject_id,
                 doc_id=doc_id_filter,
             )
-            st.session_state["mindmap_page_result"] = mermaid_text
+            # 写入数据库
+            session_id = RAGPipeline().create_session(
+                user_id=user_id, subject_id=subject_id, session_type="mindmap"
+            )
+            with db_session() as db:
+                db.add(ConversationHistory(session_id=session_id, role="user",
+                    content=f"生成思维导图：{selected}"))
+                db.add(ConversationHistory(session_id=session_id, role="assistant",
+                    content=mindmap_text))
+            st.session_state["mindmap_page_result"] = mindmap_text
         except ValueError as e:
             st.error(str(e))
         except Exception as e:
@@ -60,11 +71,17 @@ if st.button("生成思维导图", key="mindmap_page_generate", type="primary"):
 # ── 展示结果 ──────────────────────────────────────────────────────────────
 mindmap_result = st.session_state.get("mindmap_page_result")
 if mindmap_result:
-    st.markdown(f"```mermaid\n{mindmap_result}\n```")
+    try:
+        from streamlit_markmap import markmap
+        markmap(mindmap_result, height=500)
+    except ImportError:
+        st.markdown(mindmap_result)
     st.download_button(
-        label="导出 Mermaid 文本",
+        label="导出 Markdown",
         data=mindmap_result,
         file_name=f"{subject['name']}_mindmap.md",
         mime="text/markdown",
         key="mindmap_page_download",
     )
+    with st.expander("📋 查看 / 复制 Markdown 源码"):
+        st.code(mindmap_result, language="markdown")
