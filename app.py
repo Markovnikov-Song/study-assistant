@@ -57,8 +57,6 @@ else:
         subjects_page,
         subject_detail_page,
         history_page,
-        past_exams_page,
-        exam_generator_page,
         guide_page,
     ])
 
