@@ -29,34 +29,33 @@ class MindMapService:
         if not chunks:
             raise ValueError("所选资料暂无可用内容")
 
-        selected = chunks[:20]
+        # 均匀采样最多 60 个块，覆盖全书而不只是开头
+        if len(chunks) > 60:
+            step = len(chunks) // 60
+            selected = chunks[::step][:60]
+        else:
+            selected = chunks
         context = "\n\n".join(selected)
 
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "你是一个专业的知识结构分析助手。请分析以下学习资料，"
-                    "提炼核心知识点，以 Markdown 标题层级格式输出思维导图（markmap 格式）。\n\n"
+                    "你是一个专业的知识结构分析助手。请分析以下学习资料的全部内容，"
+                    "提炼所有章节的核心知识点，以 Markdown 标题层级格式输出完整思维导图（markmap 格式）。\n\n"
                     "输出要求：\n"
                     "1. 使用 Markdown 标题语法（# ## ### ####）表示层级\n"
                     "2. 第一行用 # 作为根节点，内容为学科名称\n"
-                    "3. 二级节点用 ##，三级用 ###，最多四级\n"
-                    "4. 每个节点简洁，不超过 15 个字\n"
-                    "5. 只输出 Markdown 内容，不要有任何代码块标记或说明文字\n"
-                    "6. 示例格式：\n"
-                    "# 学科名称\n"
-                    "## 第一章\n"
-                    "### 核心概念\n"
-                    "#### 定义\n"
-                    "#### 性质\n"
-                    "### 重要定理\n"
-                    "## 第二章\n"
+                    "3. 二级节点（##）对应每个章节，必须覆盖资料中出现的所有章节\n"
+                    "4. 三级节点（###）对应章节内的核心概念\n"
+                    "5. 四级节点（####）对应具体知识点，最多四级\n"
+                    "6. 每个节点简洁，不超过 15 个字\n"
+                    "7. 只输出 Markdown 内容，不要有任何代码块标记或说明文字"
                 ),
             },
             {
                 "role": "user",
-                "content": f"学科名称：{subject_name}\n\n学习资料内容：\n{context}",
+                "content": f"学科名称：{subject_name}\n\n学习资料内容（已均匀采样覆盖全书）：\n{context}",
             },
         ]
 
