@@ -1,5 +1,5 @@
 """
-思维导图服务：基于学科资料生成 Mermaid mindmap 格式的思维导图。
+思维导图服务：基于学科资料生成 markmap 格式的思维导图。
 """
 
 from __future__ import annotations
@@ -19,17 +19,16 @@ class MindMapService:
 
     def generate(self, chunks: List[str], subject_name: str) -> str:
         """
-        根据文本块列表生成 Mermaid mindmap。
+        根据文本块列表生成 markmap 格式思维导图（Markdown 标题层级）。
 
         :param chunks: 文本块列表
-        :param subject_name: 学科名称（作为思维导图根节点）
+        :param subject_name: 学科名称（作为根节点）
         :raises ValueError: chunks 为空时
-        :return: Mermaid mindmap 文本（以 mindmap 开头）
+        :return: markmap Markdown 文本
         """
         if not chunks:
             raise ValueError("所选资料暂无可用内容")
 
-        # 最多取前 20 个块，避免超出 token 限制
         selected = chunks[:20]
         context = "\n\n".join(selected)
 
@@ -38,31 +37,35 @@ class MindMapService:
                 "role": "system",
                 "content": (
                     "你是一个专业的知识结构分析助手。请分析以下学习资料，"
-                    "提炼核心知识点和知识结构，以 Mermaid mindmap 格式输出思维导图。\n\n"
+                    "提炼核心知识点，以 Markdown 标题层级格式输出思维导图（markmap 格式）。\n\n"
                     "输出要求：\n"
-                    "1. 直接输出 Mermaid mindmap 代码，不要加 markdown 代码块标记\n"
-                    "2. 第一行必须是 mindmap\n"
-                    "3. 根节点使用学科名称\n"
-                    "4. 层级清晰，使用缩进表示层级关系\n"
-                    "5. 只输出 mindmap 代码，不要有任何其他说明文字"
+                    "1. 使用 Markdown 标题语法（# ## ### ####）表示层级\n"
+                    "2. 第一行用 # 作为根节点，内容为学科名称\n"
+                    "3. 二级节点用 ##，三级用 ###，最多四级\n"
+                    "4. 每个节点简洁，不超过 15 个字\n"
+                    "5. 只输出 Markdown 内容，不要有任何代码块标记或说明文字\n"
+                    "6. 示例格式：\n"
+                    "# 学科名称\n"
+                    "## 第一章\n"
+                    "### 核心概念\n"
+                    "#### 定义\n"
+                    "#### 性质\n"
+                    "### 重要定理\n"
+                    "## 第二章\n"
                 ),
             },
             {
                 "role": "user",
-                "content": (
-                    f"学科名称：{subject_name}\n\n"
-                    f"学习资料内容：\n{context}"
-                ),
+                "content": f"学科名称：{subject_name}\n\n学习资料内容：\n{context}",
             },
         ]
 
         result = self._llm_service.chat(messages)
         result = result.strip()
 
-        # 若 LLM 返回了 markdown 代码块，提取其中内容
+        # 去除可能的代码块包裹
         if result.startswith("```"):
             lines = result.splitlines()
-            # 去掉首行（```mermaid 或 ```）和末行（```）
             inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
             result = "\n".join(inner).strip()
 
@@ -71,24 +74,11 @@ class MindMapService:
     def generate_from_subject(
         self, subject_id: int, doc_id: Optional[int] = None
     ) -> str:
-        """
-        从数据库查询文本块，生成思维导图。
-
-        需求：12.1, 12.2, 12.4, 12.6
-
-        :param subject_id: 学科 ID
-        :param doc_id: 可选，指定文档 ID 过滤
-        :return: Mermaid mindmap 文本
-        :raises ValueError: 无可用内容时
-        """
         from database import get_session, Chunk, Subject
 
-        # 查询学科名称
         with get_session() as session:
             subject = session.get(Subject, subject_id)
             subject_name = subject.name if subject else f"学科 {subject_id}"
-
-            # 查询文本块
             query = session.query(Chunk).filter(Chunk.subject_id == subject_id)
             if doc_id is not None:
                 query = query.filter(Chunk.document_id == doc_id)

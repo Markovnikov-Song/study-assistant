@@ -11,3 +11,4 @@ python-docx
 python-pptx
 pytesseract
 Pillow
+streamlit-markmap

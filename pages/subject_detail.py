@@ -116,12 +116,8 @@ with tab_docs:
 # 统一学习助手对话界面
 # =============================================================================
 with tab_chat:
-    col_hist, col_main = st.columns([1, 3])
-
-    # ── 左侧：历史会话列表 ────────────────────────────────────────────────
-    with col_hist:
-        st.markdown("**历史记录**")
-
+    # 历史记录（折叠面板，手机友好）
+    with st.expander("📋 历史记录", expanded=False):
         if st.button("＋ 新建对话", key="new_session_btn", use_container_width=True, type="primary"):
             for k in ["current_session_id", "pending_question", "needs_confirm", "mindmap_result"]:
                 st.session_state.pop(k, None)
@@ -132,10 +128,13 @@ with tab_chat:
             is_cur = s["id"] == st.session_state.get("current_session_id")
             label = f"{'▶ ' if is_cur else ''}{s['type_label']} {s['title']}"
             ts = s["created_at"].strftime("%m-%d %H:%M")
-            if st.button(f"{label}\n{ts}", key=f"hist_{s['id']}", use_container_width=True):
+            if st.button(f"{label}  {ts}", key=f"hist_{s['id']}", use_container_width=True):
                 st.session_state["current_session_id"] = s["id"]
                 st.session_state.pop("mindmap_result", None)
                 st.rerun()
+
+    # 对话区（全宽）
+    col_main = st
 
     # ── 右侧：对话区 ──────────────────────────────────────────────────────
     with col_main:
@@ -187,8 +186,12 @@ with tab_chat:
                 (m["content"] for m in reversed(history_msgs) if m["role"] == "assistant"), None
             )
             if last_answer:
-                st.markdown(f"```mermaid\n{last_answer}\n```")
-                st.download_button("导出 Mermaid", data=last_answer,
+                try:
+                    from streamlit_markmap import markmap
+                    markmap(last_answer, height=500)
+                except ImportError:
+                    st.markdown(last_answer)
+                st.download_button("导出 Markdown", data=last_answer,
                     file_name=f"{subject['name']}_mindmap.md", mime="text/markdown",
                     key="mindmap_dl")
         else:
