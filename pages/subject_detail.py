@@ -176,15 +176,9 @@ with tab_chat:
             st.session_state.pop("current_session_id", None)
 
     if not cur_sid:
-        cur_sid = RAGPipeline().create_session(
-            user_id=user_id,
-            subject_id=subject_id,
-            session_type=session_type,
-        )
-        st.session_state["current_session_id"] = cur_sid
-        st.rerun()
+        cur_sid = None  # 懒创建，提交时才建
 
-    history_msgs = get_session_history(cur_sid, user_id)
+    history_msgs = get_session_history(cur_sid, user_id) if cur_sid else []
 
     # 显示消息
     if session_type == "mindmap":
@@ -249,6 +243,12 @@ with tab_chat:
                         st.write("🧠 AI 分析知识结构…")
                         mindmap_text = MindMapService().generate_from_subject(subject_id, doc_id_filter)
                         st.write("💾 保存结果…")
+                        # 懒创建会话
+                        if not cur_sid:
+                            cur_sid = RAGPipeline().create_session(
+                                user_id=user_id, subject_id=subject_id, session_type="mindmap"
+                            )
+                            st.session_state["current_session_id"] = cur_sid
                         from database import get_session as db_session, ConversationHistory
                         with db_session() as db:
                             db.add(ConversationHistory(session_id=cur_sid, role="user", content=f"生成思维导图：{sel}"))
@@ -350,6 +350,15 @@ with tab_chat:
             st.session_state["pending_question"] = question.strip()
             query_mode = "broad" if use_broad else ("solve" if session_type == "solve" else "strict")
             st.session_state["pending_mode"] = query_mode
+
+            # 懒创建会话：只在真正提交时才建
+            if not cur_sid:
+                cur_sid = RAGPipeline().create_session(
+                    user_id=user_id,
+                    subject_id=subject_id,
+                    session_type=session_type,
+                )
+                st.session_state["current_session_id"] = cur_sid
 
             with st.chat_message("user"):
                 st.markdown(question.strip())

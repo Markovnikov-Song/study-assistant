@@ -11,6 +11,7 @@ from utils import (
     delete_session,
     delete_message,
     delete_all_sessions,
+    delete_empty_sessions,
     export_session_markdown,
     export_session_html,
     export_session_word,
@@ -28,7 +29,7 @@ if not sessions:
     st.stop()
 
 # 顶部操作栏
-top_col1, top_col2 = st.columns([4, 1])
+top_col1, top_col2, top_col3 = st.columns([3, 1, 1])
 with top_col1:
     sort_by = st.radio(
         "排序",
@@ -37,6 +38,11 @@ with top_col1:
         label_visibility="collapsed",
     )
 with top_col2:
+    if st.button("🧹 清理空会话", use_container_width=True):
+        count = delete_empty_sessions(user_id)
+        st.success(f"已清理 {count} 条空会话")
+        st.rerun()
+with top_col3:
     with st.popover("🗑 清空全部", use_container_width=True):
         st.warning(f"确定删除全部 {len(sessions)} 条对话记录？此操作不可撤销。")
         if st.button("确认清空", key="del_all_btn", type="primary"):

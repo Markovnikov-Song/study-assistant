@@ -328,6 +328,20 @@ def delete_all_sessions(user_id: int) -> dict:
         return {"success": True, "count": len(sessions)}
 
 
+def delete_empty_sessions(user_id: int) -> int:
+    """删除没有任何消息的空会话，返回删除数量。"""
+    from database import ConversationHistory
+    with get_session() as session:
+        all_sessions = session.query(ConversationSession).filter_by(user_id=user_id).all()
+        count = 0
+        for s in all_sessions:
+            msg_count = session.query(ConversationHistory).filter_by(session_id=s.id).count()
+            if msg_count == 0:
+                session.delete(s)
+                count += 1
+        return count
+
+
 def export_session_markdown(session_id: int, user_id: int) -> str:
     """将指定会话导出为 Markdown 字符串。"""
     with get_session() as session:
