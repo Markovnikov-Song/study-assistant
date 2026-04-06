@@ -24,10 +24,6 @@ def _cached_sessions(subject_id, user_id):
     return get_subject_sessions(subject_id, user_id)
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def _cached_history(session_id, user_id):
-    return get_session_history(session_id, user_id)
-
 # ── 登录检查 ──────────────────────────────────────────────────────────────
 user = require_login()
 user_id = user["id"]
@@ -133,7 +129,9 @@ with tab_chat:
     # 历史记录（折叠面板）
     with st.expander("📋 历史记录", expanded=False):
         if st.button("＋ 新建对话", key="new_session_btn", use_container_width=True, type="primary"):
-            for k in ["current_session_id", "pending_question", "needs_confirm"]:
+            for k in ["current_session_id", "pending_question", "needs_confirm",
+                      "pending_mode", "qa_ocr_prefill", "solve_ocr_prefill",
+                      "qa_text_input", "solve_text_input"]:
                 st.session_state.pop(k, None)
             st.rerun()
 
