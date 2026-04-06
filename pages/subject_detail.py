@@ -227,15 +227,20 @@ with tab_chat:
                 (d["id"] for d in done_docs if d["filename"] == sel), None
             )
             if st.button("生成思维导图", key="mindmap_gen", type="primary"):
-                with st.spinner("正在生成…"):
+                with st.status("正在生成思维导图…", expanded=True) as status:
                     try:
+                        st.write("📖 读取资料内容…")
+                        st.write("🧠 AI 分析知识结构…")
                         mindmap_text = MindMapService().generate_from_subject(subject_id, doc_id_filter)
+                        st.write("💾 保存结果…")
                         from database import get_session as db_session, ConversationHistory
                         with db_session() as db:
                             db.add(ConversationHistory(session_id=cur_sid, role="user", content=f"生成思维导图：{sel}"))
                             db.add(ConversationHistory(session_id=cur_sid, role="assistant", content=mindmap_text))
+                        status.update(label="✅ 思维导图生成完成！", state="complete")
                         st.rerun()
                     except Exception as e:
+                        status.update(label="❌ 生成失败", state="error")
                         st.error(str(e))
     else:
         placeholder = "输入题目…" if session_type == "solve" else "输入问题…"
@@ -249,13 +254,17 @@ with tab_chat:
             with st.chat_message("user"):
                 st.markdown(question.strip())
 
-            with st.spinner("生成中…"):
+            label = "🔢 正在解题…" if session_type == "solve" else "💬 正在生成回答…"
+            with st.status(label, expanded=True) as status:
+                st.write("🔍 检索相关资料…")
                 result = RAGPipeline().query(
                     question=question.strip(),
                     subject_id=subject_id,
                     session_id=cur_sid,
                     mode=query_mode,
                 )
+                if not result.needs_confirmation:
+                    status.update(label="✅ 完成", state="complete")
 
             if result.needs_confirmation:
                 st.session_state["needs_confirm"] = True
