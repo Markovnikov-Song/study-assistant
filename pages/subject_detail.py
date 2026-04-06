@@ -298,6 +298,7 @@ with tab_chat:
                                 img_b64
                             )
                             st.session_state[prefill_key] = ocr_text
+                            st.session_state[text_key] = ocr_text  # 直接写入 text_area 的 key
                             st.rerun()
                         except Exception as e:
                             st.error(f"识别失败：{e}")
@@ -322,6 +323,7 @@ with tab_chat:
                             img_b64
                         )
                         st.session_state[prefill_key] = ocr_text
+                        st.session_state[text_key] = ocr_text  # 直接写入 text_area 的 key
                         st.rerun()
                     except Exception as e:
                         st.error(f"识别失败：{e}")
