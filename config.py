@@ -39,6 +39,7 @@ class AppConfig:
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
     TOP_K: int = 5
+    LLM_VISION_MODEL: str = "Qwen/Qwen2.5-VL-7B-Instruct"
 
 
 # 模块级缓存，首次调用 get_config() 时填充
@@ -87,6 +88,7 @@ def get_config() -> AppConfig:
             CHUNK_SIZE=int(secrets.get("CHUNK_SIZE", _DEFAULTS["CHUNK_SIZE"])),
             CHUNK_OVERLAP=int(secrets.get("CHUNK_OVERLAP", _DEFAULTS["CHUNK_OVERLAP"])),
             TOP_K=int(secrets.get("TOP_K", _DEFAULTS["TOP_K"])),
+            LLM_VISION_MODEL=str(secrets.get("LLM_VISION_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct")),
         )
     return _config
 

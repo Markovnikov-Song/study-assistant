@@ -55,13 +55,13 @@ class LLMService:
     def chat_with_vision(self, messages: List[dict], image_b64: str) -> str:
         """
         将 base64 图片嵌入消息，调用支持视觉的模型（用于 OCR）。
-
-        :param messages: 基础消息列表（通常包含 system prompt）
-        :param image_b64: base64 编码的图片字符串
-        :raises RuntimeError: LLM 调用失败时
-        :return: 模型识别文本
+        优先使用 LLM_VISION_MODEL 配置，未配置则使用 Qwen2.5-VL-7B-Instruct。
         """
         try:
+            from config import get_config
+            cfg = get_config()
+            # 视觉模型单独配置，默认用 Qwen VL
+            vision_model = getattr(cfg, "LLM_VISION_MODEL", None) or "Qwen/Qwen2.5-VL-7B-Instruct"
             client = self._get_client()
             vision_messages = list(messages) + [
                 {
@@ -69,9 +69,7 @@ class LLMService:
                     "content": [
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{image_b64}",
-                            },
+                            "image_url": {"url": f"data:image/png;base64,{image_b64}"},
                         },
                         {
                             "type": "text",
@@ -81,7 +79,7 @@ class LLMService:
                 }
             ]
             response = client.chat.completions.create(
-                model=self._get_model(),
+                model=vision_model,
                 messages=vision_messages,
             )
             return response.choices[0].message.content or ""
