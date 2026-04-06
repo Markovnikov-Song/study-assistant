@@ -12,3 +12,4 @@ python-pptx
 pytesseract
 Pillow
 streamlit-markmap
+streamlit-paste-button

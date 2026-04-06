@@ -246,18 +246,45 @@ with tab_chat:
     else:
         placeholder = "输入题目…" if session_type == "solve" else "输入问题…"
 
-        # 图片上传 + 文本输入（问答和解题都支持）
+        # 图片上传 + 粘贴 + 文本输入
         ocr_key = f"{session_type}_img_upload"
         prefill_key = f"{session_type}_ocr_prefill"
         text_key = f"{session_type}_text_input"
         submit_key = f"{session_type}_submit_btn"
         ocr_btn_key = f"{session_type}_ocr_btn"
+        paste_key = f"{session_type}_paste_btn"
 
-        img_file = st.file_uploader(
-            "📷 上传图片（支持 JPG/PNG）",
-            type=["jpg", "jpeg", "png"],
-            key=ocr_key,
-        )
+        img_col, paste_col = st.columns([3, 1])
+        with img_col:
+            img_file = st.file_uploader(
+                "📷 上传图片（JPG/PNG）",
+                type=["jpg", "jpeg", "png"],
+                key=ocr_key,
+            )
+        with paste_col:
+            st.markdown("<br>", unsafe_allow_html=True)
+            try:
+                from streamlit_paste_button import paste_image_button
+                pasted = paste_image_button("📋 粘贴截图", key=paste_key)
+                if pasted.image_data is not None:
+                    import base64, io as _io
+                    buf = _io.BytesIO()
+                    pasted.image_data.save(buf, format="PNG")
+                    img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                    with st.spinner("正在识别…"):
+                        from services.llm_service import LLMService
+                        try:
+                            ocr_text = LLMService().chat_with_vision(
+                                [{"role": "system", "content": "请识别图片中的文字内容，只输出文字，不要其他说明。"}],
+                                img_b64
+                            )
+                            st.session_state[prefill_key] = ocr_text
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"识别失败：{e}")
+            except ImportError:
+                st.caption("安装 streamlit-paste-button 支持粘贴")
+
         if img_file is not None:
             import base64
             img_b64 = base64.b64encode(img_file.read()).decode("utf-8")
