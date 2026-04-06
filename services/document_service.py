@@ -238,7 +238,10 @@ class DocumentService:
             for idx, chunk in enumerate(chunks)
         ]
 
-        vector_store.add_documents(docs)
+        # 分批写入，每批最多 64 条，避免超出 embedding API 限制
+        batch_size = 64
+        for i in range(0, len(docs), batch_size):
+            vector_store.add_documents(docs[i:i + batch_size])
 
     def _update_doc_status(
         self, doc_id: int, status: str, error: str | None = None

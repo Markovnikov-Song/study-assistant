@@ -33,20 +33,19 @@ class EmbeddingService:
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """
-        批量生成文本向量。
-
-        :param texts: 待向量化的文本列表
-        :raises RuntimeError: Embedding 调用失败时
-        :return: 每条文本对应的向量列表
+        批量生成文本向量，自动分批处理（每批最多 64 条）。
         """
         try:
             client = self._get_client()
-            response = client.embeddings.create(
-                model=self._get_model(),
-                input=texts,
-            )
-            # 按原始顺序返回向量
-            return [item.embedding for item in sorted(response.data, key=lambda x: x.index)]
+            model = self._get_model()
+            batch_size = 64
+            all_embeddings: List[List[float]] = []
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                response = client.embeddings.create(model=model, input=batch)
+                batch_embeddings = [item.embedding for item in sorted(response.data, key=lambda x: x.index)]
+                all_embeddings.extend(batch_embeddings)
+            return all_embeddings
         except Exception as e:
             raise RuntimeError(f"向量化服务暂时不可用，请稍后重试。（{e}）") from e
 
