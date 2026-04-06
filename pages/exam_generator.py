@@ -108,7 +108,17 @@ with tab_custom:
         key="custom_question_types",
     )
 
-    count = st.slider("题目数量", min_value=1, max_value=20, value=5, key="custom_count")
+    # 每种题型单独设置数量
+    type_counts = {}
+    if question_types:
+        st.markdown("**各题型数量**")
+        cols = st.columns(len(question_types))
+        for i, qt in enumerate(question_types):
+            with cols[i]:
+                type_counts[qt] = st.number_input(
+                    qt, min_value=1, max_value=20, value=3,
+                    key=f"count_{qt}",
+                )
 
     difficulty = st.radio(
         "难度",
@@ -128,20 +138,22 @@ with tab_custom:
         if not question_types:
             st.warning("请至少选择一种题型。")
         else:
+            total = sum(type_counts.values())
             with st.spinner("正在生成题目，请稍候…"):
                 result = exam_service.generate_custom_questions(
                     subject_id=subject_id,
                     user_id=user_id,
                     question_types=question_types,
-                    count=count,
+                    count=total,
                     difficulty=difficulty,
                     topic=topic.strip() or "全部考点",
+                    type_counts=type_counts,
                 )
             if result:
                 st.session_state["custom_questions_result"] = result
-                types_str = "、".join(question_types)
+                types_str = "、".join(f"{t}{type_counts[t]}道" for t in question_types)
                 prompt = (
-                    f"自定义出题：题型={types_str}，数量={count}，"
+                    f"自定义出题：{types_str}，"
                     f"难度={difficulty}，考点={topic.strip() or '全部考点'}"
                 )
                 _save_exam_result(

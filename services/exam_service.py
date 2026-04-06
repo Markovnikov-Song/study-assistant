@@ -386,23 +386,22 @@ class ExamService:
         count: int,
         difficulty: str,
         topic: str,
+        type_counts: dict = None,
     ) -> str:
         """
         按参数生成自定义题目和参考答案（Markdown 格式）。
 
-        需求：14.3, 14.4, 14.5
-
         :param subject_id: 学科 ID
         :param user_id: 用户 ID
         :param question_types: 题型列表，如 ["选择题", "简答题"]
-        :param count: 题目数量
+        :param count: 题目总数量（type_counts 为空时使用）
         :param difficulty: 难度，如 "简单"/"中等"/"困难"
         :param topic: 指定考点/主题
+        :param type_counts: 各题型数量 dict，如 {"选择题": 5, "简答题": 3}，优先于 count
         :return: Markdown 格式题目与答案
         """
         from database import get_session, Chunk
 
-        # 查询学科文本块作为参考资料（最多取 20 块）
         with get_session() as session:
             chunk_rows = (
                 session.query(Chunk)
@@ -414,7 +413,14 @@ class ExamService:
             chunks = [row.content for row in chunk_rows]
 
         context = "\n\n".join(chunks) if chunks else "（暂无学科资料，请根据题目要求出题）"
-        types_str = "、".join(question_types) if question_types else "综合题型"
+
+        # 构建题型+数量描述
+        if type_counts:
+            types_str = "、".join(f"{t} {type_counts.get(t, 1)} 道" for t in question_types)
+            total = sum(type_counts.get(t, 1) for t in question_types)
+        else:
+            types_str = "、".join(question_types) if question_types else "综合题型"
+            total = count
 
         messages = [
             {
@@ -431,8 +437,8 @@ class ExamService:
             {
                 "role": "user",
                 "content": (
-                    f"题型：{types_str}\n"
-                    f"数量：{count} 道\n"
+                    f"题型及数量：{types_str}\n"
+                    f"总题数：{total} 道\n"
                     f"难度：{difficulty}\n"
                     f"考点/主题：{topic}\n\n"
                     f"参考资料：\n{context}"
