@@ -246,50 +246,51 @@ with tab_chat:
     else:
         placeholder = "输入题目…" if session_type == "solve" else "输入问题…"
 
-        # 解题模式支持上传题目图片
-        if session_type == "solve":
-            img_file = st.file_uploader(
-                "上传题目图片（可选，支持 JPG/PNG）",
-                type=["jpg", "jpeg", "png"],
-                key="solve_img_upload",
-                label_visibility="collapsed",
-                help="可以直接拍照上传题目，AI 会自动识别文字",
-            )
-            if img_file is not None:
-                import base64
-                img_b64 = base64.b64encode(img_file.read()).decode("utf-8")
-                if st.button("识别图片中的题目", key="ocr_btn"):
-                    with st.spinner("正在识别…"):
-                        from services.llm_service import LLMService
-                        try:
-                            ocr_text = LLMService().chat_with_vision(
-                                [{"role": "system", "content": "请识别图片中的题目文字，只输出题目内容，不要其他说明。"}],
-                                img_b64
-                            )
-                            st.session_state["ocr_prefill"] = ocr_text
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"识别失败：{e}")
+        # 图片上传 + 文本输入（问答和解题都支持）
+        ocr_key = f"{session_type}_img_upload"
+        prefill_key = f"{session_type}_ocr_prefill"
+        text_key = f"{session_type}_text_input"
+        submit_key = f"{session_type}_submit_btn"
+        ocr_btn_key = f"{session_type}_ocr_btn"
 
-            prefill = st.session_state.pop("ocr_prefill", "")
-            if prefill:
-                st.info(f"识别结果（已填入输入框）：{prefill[:100]}…" if len(prefill) > 100 else f"识别结果：{prefill}")
+        img_file = st.file_uploader(
+            "📷 上传图片（支持 JPG/PNG）",
+            type=["jpg", "jpeg", "png"],
+            key=ocr_key,
+        )
+        if img_file is not None:
+            import base64
+            img_b64 = base64.b64encode(img_file.read()).decode("utf-8")
+            if st.button("识别图片文字", key=ocr_btn_key):
+                with st.spinner("正在识别…"):
+                    from services.llm_service import LLMService
+                    try:
+                        ocr_text = LLMService().chat_with_vision(
+                            [{"role": "system", "content": "请识别图片中的文字内容，只输出文字，不要其他说明。"}],
+                            img_b64
+                        )
+                        st.session_state[prefill_key] = ocr_text
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"识别失败：{e}")
 
-        if session_type == "solve":
-            prefill = st.session_state.pop("ocr_prefill", "")
-            question_text = st.text_area(
-                "题目内容",
-                value=prefill,
-                height=120,
-                key="solve_text_input",
-                placeholder="输入题目，或上传图片后点击识别…",
-                label_visibility="collapsed",
-            )
-            question = question_text if st.button("提交解题", key="solve_submit_btn", type="primary") else None
-        else:
-            question = st.chat_input(placeholder, key="unified_chat_input")
+        prefill = st.session_state.get(prefill_key, "")
+        question_text = st.text_area(
+            "内容",
+            value=prefill,
+            height=100,
+            key=text_key,
+            placeholder=placeholder,
+            label_visibility="collapsed",
+        )
+        if prefill:
+            st.caption("已识别内容，可在上方编辑后提交")
+        btn_label = "提交解题" if session_type == "solve" else "提交问题"
+        question = question_text if st.button(btn_label, key=submit_key, type="primary") else None
 
         if question and question.strip():
+            st.session_state.pop(f"{session_type}_ocr_prefill", None)
+            st.session_state.pop("ocr_prefill", None)
             st.session_state["pending_question"] = question.strip()
             query_mode = "broad" if use_broad else ("solve" if session_type == "solve" else "strict")
             st.session_state["pending_mode"] = query_mode
