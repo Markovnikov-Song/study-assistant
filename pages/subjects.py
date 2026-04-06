@@ -1,30 +1,32 @@
 """
 学科管理页面
-需求：3.1, 3.2, 3.3, 3.4, 3.5
 """
 
 import streamlit as st
 
-from utils import require_login, get_user_subjects, create_subject, delete_subject, update_subject
+from utils import (
+    require_login, get_user_subjects, create_subject,
+    delete_subject, update_subject, toggle_pin_subject, toggle_archive_subject,
+)
 
-# ── 登录检查 ──────────────────────────────────────────────────────────────
 user = require_login()
 user_id = user["id"]
 
 st.title("我的学科")
 
 # ── 学科列表 ──────────────────────────────────────────────────────────────
-subjects = get_user_subjects(user_id)
+subjects = get_user_subjects(user_id, include_archived=False)
 
 if not subjects:
     st.info("还没有学科，请在下方创建一个。")
 else:
     for subject in subjects:
+        pin_icon = "📌" if subject["is_pinned"] else ""
         with st.container(border=True):
-            col_info, col_enter, col_edit, col_del = st.columns([5, 1, 1, 1])
+            col_info, col_enter, col_edit, col_pin, col_more = st.columns([5, 1, 1, 1, 1])
 
             with col_info:
-                st.subheader(subject["name"])
+                st.subheader(f"{pin_icon} {subject['name']}" if pin_icon else subject["name"])
                 if subject["category"]:
                     st.caption(f"分类：{subject['category']}")
                 if subject["description"]:
@@ -49,15 +51,53 @@ else:
                         else:
                             st.error(result["error"])
 
-            with col_del:
-                with st.popover("删除"):
-                    st.warning(f"确定要删除学科「{subject['name']}」吗？此操作不可撤销。")
-                    if st.button("确认删除", key=f"confirm_del_{subject['id']}", type="primary"):
-                        result = delete_subject(subject["id"], user_id)
-                        if result["success"]:
-                            st.rerun()
-                        else:
-                            st.error(result["error"])
+            with col_pin:
+                pin_label = "取消置顶" if subject["is_pinned"] else "📌 置顶"
+                if st.button(pin_label, key=f"pin_{subject['id']}"):
+                    toggle_pin_subject(subject["id"], user_id)
+                    st.rerun()
+
+            with col_more:
+                with st.popover("⋯"):
+                    if st.button("📦 归档", key=f"archive_{subject['id']}"):
+                        toggle_archive_subject(subject["id"], user_id)
+                        st.rerun()
+                    st.divider()
+                    with st.popover("🗑 删除"):
+                        st.warning(f"确定要删除「{subject['name']}」吗？此操作不可撤销。")
+                        if st.button("确认删除", key=f"confirm_del_{subject['id']}", type="primary"):
+                            result = delete_subject(subject["id"], user_id)
+                            if result["success"]:
+                                st.rerun()
+                            else:
+                                st.error(result["error"])
+
+# ── 归档学科 ──────────────────────────────────────────────────────────────
+archived = get_user_subjects(user_id, include_archived=True)
+archived = [s for s in archived if s["is_archived"]]
+
+if archived:
+    with st.expander(f"📦 归档学科（{len(archived)}）", expanded=False):
+        for subject in archived:
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([6, 1, 1])
+                with c1:
+                    st.write(f"**{subject['name']}**")
+                    if subject["category"]:
+                        st.caption(f"分类：{subject['category']}")
+                with c2:
+                    if st.button("恢复", key=f"unarchive_{subject['id']}"):
+                        toggle_archive_subject(subject["id"], user_id)
+                        st.rerun()
+                with c3:
+                    with st.popover("删除"):
+                        st.warning(f"确定删除「{subject['name']}」？")
+                        if st.button("确认", key=f"del_archived_{subject['id']}", type="primary"):
+                            result = delete_subject(subject["id"], user_id)
+                            if result["success"]:
+                                st.rerun()
+                            else:
+                                st.error(result["error"])
 
 # ── 创建学科 ──────────────────────────────────────────────────────────────
 st.divider()

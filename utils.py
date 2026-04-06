@@ -51,20 +51,16 @@ def get_current_user() -> Optional[dict]:
 # ---------------------------------------------------------------------------
 
 
-def get_user_subjects(user_id: int) -> List[dict]:
-    """
-    获取指定用户的所有学科列表。
-
-    :param user_id: 用户 ID
-    :return: 学科 dict 列表
-    """
+def get_user_subjects(user_id: int, include_archived: bool = False) -> List[dict]:
     with get_session() as session:
-        subjects = (
-            session.query(Subject)
-            .filter_by(user_id=user_id)
-            .order_by(Subject.created_at.desc())
-            .all()
-        )
+        q = session.query(Subject).filter_by(user_id=user_id)
+        if not include_archived:
+            q = q.filter(Subject.is_archived == 0)
+        subjects = q.order_by(
+            Subject.is_pinned.desc(),
+            Subject.sort_order.asc(),
+            Subject.created_at.desc()
+        ).all()
         return [
             {
                 "id": s.id,
@@ -72,6 +68,8 @@ def get_user_subjects(user_id: int) -> List[dict]:
                 "name": s.name,
                 "category": s.category,
                 "description": s.description,
+                "is_pinned": bool(s.is_pinned),
+                "is_archived": bool(s.is_archived),
                 "created_at": s.created_at,
             }
             for s in subjects
@@ -126,6 +124,26 @@ def update_subject(subject_id: int, user_id: int, name: str, category: str, desc
         subject.category = category
         subject.description = description
         return {"success": True}
+
+
+def toggle_pin_subject(subject_id: int, user_id: int) -> dict:
+    """切换学科置顶状态。"""
+    with get_session() as session:
+        subject = session.query(Subject).filter_by(id=subject_id, user_id=user_id).first()
+        if subject is None:
+            return {"success": False, "error": "学科不存在"}
+        subject.is_pinned = 0 if subject.is_pinned else 1
+        return {"success": True, "is_pinned": bool(subject.is_pinned)}
+
+
+def toggle_archive_subject(subject_id: int, user_id: int) -> dict:
+    """切换学科归档状态。"""
+    with get_session() as session:
+        subject = session.query(Subject).filter_by(id=subject_id, user_id=user_id).first()
+        if subject is None:
+            return {"success": False, "error": "学科不存在"}
+        subject.is_archived = 0 if subject.is_archived else 1
+        return {"success": True, "is_archived": bool(subject.is_archived)}
 
 
 def delete_subject(subject_id: int, user_id: int) -> dict:
@@ -194,6 +212,8 @@ def get_subject(subject_id: int, user_id: int) -> Optional[dict]:
             "name": subject.name,
             "category": subject.category,
             "description": subject.description,
+            "is_pinned": bool(subject.is_pinned),
+            "is_archived": bool(subject.is_archived),
             "created_at": subject.created_at,
         }
 
