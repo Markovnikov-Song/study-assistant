@@ -84,7 +84,7 @@ class LLMService:
             )
             return response.choices[0].message.content or ""
         except Exception as e:
-            raise RuntimeError(f"AI 视觉服务暂时不可用，请稍后重试。（{e}）") from e
+            raise RuntimeError(f"AI 视觉服务暂时不可用，请稍后重试。（模型：{vision_model}，错误：{e}）") from e
 
     def stream_chat(self, messages: List[dict]) -> Generator[str, None, None]:
         """
