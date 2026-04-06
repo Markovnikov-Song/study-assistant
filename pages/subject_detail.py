@@ -13,6 +13,21 @@ from services.document_service import DocumentService
 from services.rag_pipeline import RAGPipeline
 from services.mindmap_service import MindMapService
 
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_list_docs(subject_id, user_id):
+    return DocumentService().list_documents(subject_id=subject_id, user_id=user_id)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_sessions(subject_id, user_id):
+    return get_subject_sessions(subject_id, user_id)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_history(session_id, user_id):
+    return get_session_history(session_id, user_id)
+
 # ── 登录检查 ──────────────────────────────────────────────────────────────
 user = require_login()
 user_id = user["id"]
@@ -266,7 +281,9 @@ with tab_chat:
             try:
                 from streamlit_paste_button import paste_image_button
                 pasted = paste_image_button("📋 粘贴截图", key=paste_key)
-                if pasted.image_data is not None:
+                paste_processed_key = f"{paste_key}_processed"
+                if pasted.image_data is not None and not st.session_state.get(paste_processed_key):
+                    st.session_state[paste_processed_key] = True
                     import base64, io as _io
                     buf = _io.BytesIO()
                     pasted.image_data.save(buf, format="PNG")
@@ -282,6 +299,8 @@ with tab_chat:
                             st.rerun()
                         except Exception as e:
                             st.error(f"识别失败：{e}")
+                elif pasted.image_data is None:
+                    st.session_state.pop(paste_processed_key, None)
             except ImportError:
                 st.caption("安装 streamlit-paste-button 支持粘贴")
 
