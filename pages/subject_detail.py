@@ -204,8 +204,7 @@ with tab_chat:
                         for src in msg["sources"]:
                             st.caption(f"· {src.get('filename','')}（片段 {src.get('chunk_index','')}）：{str(src.get('content',''))[:80]}…")
 
-    # 相关性不足确认
-    if st.session_state.get("needs_confirm"):
+    if st.session_state.get("needs_confirm") and cur_sid:
         st.warning("已上传资料中未找到高度相关内容，请选择：")
         c1, c2 = st.columns(2)
         with c1:
@@ -331,7 +330,6 @@ with tab_chat:
         prefill = st.session_state.get(prefill_key, "")
         question_text = st.text_area(
             "内容",
-            value=prefill,
             height=100,
             key=text_key,
             placeholder=placeholder,
