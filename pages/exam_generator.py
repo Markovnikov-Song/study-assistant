@@ -108,16 +108,23 @@ with tab_custom:
         key="custom_question_types",
     )
 
-    # 每种题型单独设置数量
+    # 每种题型单独设置数量和分值
     type_counts = {}
+    type_scores = {}
+    _default_scores = {"选择题": 2, "填空题": 3, "简答题": 10, "计算题": 15}
     if question_types:
-        st.markdown("**各题型数量**")
-        cols = st.columns(len(question_types))
-        for i, qt in enumerate(question_types):
-            with cols[i]:
+        st.markdown("**各题型数量 / 每题分值**")
+        for qt in question_types:
+            c1, c2 = st.columns(2)
+            with c1:
                 type_counts[qt] = st.number_input(
-                    qt, min_value=1, max_value=20, value=3,
-                    key=f"count_{qt}",
+                    f"{qt} 数量", min_value=1, max_value=20,
+                    value=3, key=f"count_{qt}",
+                )
+            with c2:
+                type_scores[qt] = st.number_input(
+                    f"{qt} 每题分值", min_value=1, max_value=50,
+                    value=_default_scores.get(qt, 5), key=f"score_{qt}",
                 )
 
     difficulty = st.radio(
@@ -148,12 +155,14 @@ with tab_custom:
                     difficulty=difficulty,
                     topic=topic.strip() or "全部考点",
                     type_counts=type_counts,
+                    type_scores=type_scores,
                 )
             if result:
                 st.session_state["custom_questions_result"] = result
-                types_str = "、".join(f"{t}{type_counts[t]}道" for t in question_types)
+                types_str = "、".join(f"{t}{type_counts[t]}道×{type_scores[t]}分" for t in question_types)
+                total_score = sum(type_counts[t] * type_scores[t] for t in question_types)
                 prompt = (
-                    f"自定义出题：{types_str}，"
+                    f"自定义出题：{types_str}，总分={total_score}分，"
                     f"难度={difficulty}，考点={topic.strip() or '全部考点'}"
                 )
                 _save_exam_result(

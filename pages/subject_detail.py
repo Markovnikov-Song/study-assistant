@@ -520,16 +520,23 @@ with tab_gen:
         q_types = st.multiselect("题型", ["选择题", "填空题", "简答题", "计算题"],
             default=["选择题", "简答题"], key="sd_custom_types")
 
-        # 每种题型单独设置数量
+        # 每种题型单独设置数量和分值
         sd_type_counts = {}
+        sd_type_scores = {}
+        _sd_default_scores = {"选择题": 2, "填空题": 3, "简答题": 10, "计算题": 15}
         if q_types:
-            st.markdown("**各题型数量**")
-            sd_cols = st.columns(len(q_types))
-            for i, qt in enumerate(q_types):
-                with sd_cols[i]:
+            st.markdown("**各题型数量 / 每题分值**")
+            for qt in q_types:
+                c1, c2 = st.columns(2)
+                with c1:
                     sd_type_counts[qt] = st.number_input(
-                        qt, min_value=1, max_value=20, value=3,
-                        key=f"sd_count_{qt}",
+                        f"{qt} 数量", min_value=1, max_value=20,
+                        value=3, key=f"sd_count_{qt}",
+                    )
+                with c2:
+                    sd_type_scores[qt] = st.number_input(
+                        f"{qt} 每题分值", min_value=1, max_value=50,
+                        value=_sd_default_scores.get(qt, 5), key=f"sd_score_{qt}",
                     )
 
         q_diff = st.radio("难度", ["简单", "中等", "困难"], index=1, horizontal=True, key="sd_custom_diff")
@@ -540,20 +547,22 @@ with tab_gen:
                 st.warning("请至少选择一种题型。")
             else:
                 sd_total = sum(sd_type_counts.values())
+                sd_total_score = sum(sd_type_counts[t] * sd_type_scores[t] for t in q_types)
                 with st.spinner("正在生成…"):
                     _result = _exam_svc.generate_custom_questions(
                         subject_id=subject_id, user_id=user_id,
                         question_types=q_types, count=sd_total,
                         difficulty=q_diff, topic=q_topic.strip() or "全部考点",
                         type_counts=sd_type_counts,
+                        type_scores=sd_type_scores,
                     )
                 if _result:
                     st.session_state["sd_custom_questions"] = _result
                     from services.rag_pipeline import RAGPipeline as _RAG
                     from database import get_session as _db_s, ConversationHistory as _CH
                     _sid = _RAG().create_session(user_id=user_id, subject_id=subject_id, session_type="exam")
-                    _types_str = "、".join(f"{t}{sd_type_counts[t]}道" for t in q_types)
-                    _prompt = f"自定义出题：{_types_str}，难度={q_diff}，考点={q_topic.strip() or '全部考点'}"
+                    _types_str = "、".join(f"{t}{sd_type_counts[t]}道×{sd_type_scores[t]}分" for t in q_types)
+                    _prompt = f"自定义出题：{_types_str}，总分={sd_total_score}分，难度={q_diff}，考点={q_topic.strip() or '全部考点'}"
                     with _db_s() as _db:
                         _db.add(_CH(session_id=_sid, role="user", content=_prompt))
                         _db.add(_CH(session_id=_sid, role="assistant", content=_result))

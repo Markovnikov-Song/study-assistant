@@ -387,6 +387,7 @@ class ExamService:
         difficulty: str,
         topic: str,
         type_counts: dict = None,
+        type_scores: dict = None,
     ) -> str:
         """
         按参数生成自定义题目和参考答案（Markdown 格式）。
@@ -414,13 +415,27 @@ class ExamService:
 
         context = "\n\n".join(chunks) if chunks else "（暂无学科资料，请根据题目要求出题）"
 
-        # 构建题型+数量描述
+        # 构建题型+数量+分值描述
         if type_counts:
-            types_str = "、".join(f"{t} {type_counts.get(t, 1)} 道" for t in question_types)
+            if type_scores:
+                types_str = "、".join(
+                    f"{t} {type_counts.get(t, 1)} 道（每题 {type_scores.get(t, 5)} 分）"
+                    for t in question_types
+                )
+                total_score = sum(type_counts.get(t, 1) * type_scores.get(t, 5) for t in question_types)
+            else:
+                types_str = "、".join(f"{t} {type_counts.get(t, 1)} 道" for t in question_types)
+                total_score = None
             total = sum(type_counts.get(t, 1) for t in question_types)
         else:
             types_str = "、".join(question_types) if question_types else "综合题型"
             total = count
+            total_score = None
+
+        score_instruction = (
+            f"\n4. 每道题标题后用括号标注分值，格式：**第X题**（X分）"
+            f"\n5. 试卷末尾注明总分：{total_score} 分"
+        ) if total_score else ""
 
         messages = [
             {
@@ -432,6 +447,7 @@ class ExamService:
                     "1. 严格按照指定题型、数量、难度和考点出题\n"
                     "2. 每道题附上详细的参考答案\n"
                     "3. 使用 Markdown 格式输出，题目和答案分开展示"
+                    + score_instruction
                 ),
             },
             {
