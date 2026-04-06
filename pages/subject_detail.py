@@ -509,18 +509,19 @@ with tab_gen:
                 st.session_state["predicted_paper"] = _result
             else:
                 st.warning("暂无学科资料或历年题，请先上传资料。")
-            if st.session_state.get("predicted_paper"):
-                st.markdown(st.session_state["predicted_paper"])
-                st.download_button("导出 Markdown", data=st.session_state["predicted_paper"],
-                    file_name=f"{subject['name']}_预测试卷.md", mime="text/markdown",
-                    key="dl_predicted")
+
+        if st.session_state.get("predicted_paper"):
+            st.markdown(st.session_state["predicted_paper"])
+            st.download_button("导出 Markdown", data=st.session_state["predicted_paper"],
+                file_name=f"{subject['name']}_预测试卷.md", mime="text/markdown",
+                key="dl_predicted")
 
     with gen_tab2:
         q_types = st.multiselect("题型", ["选择题", "填空题", "简答题", "计算题"],
-            default=["选择题", "简答题"], key="custom_types")
-        q_count = st.slider("数量", 1, 20, 5, key="custom_count")
-        q_diff = st.radio("难度", ["简单", "中等", "困难"], index=1, horizontal=True, key="custom_diff")
-        q_topic = st.text_input("考点/主题（可选）", key="custom_topic")
+            default=["选择题", "简答题"], key="sd_custom_types")
+        q_count = st.slider("数量", 1, 20, 5, key="sd_custom_count")
+        q_diff = st.radio("难度", ["简单", "中等", "困难"], index=1, horizontal=True, key="sd_custom_diff")
+        q_topic = st.text_input("考点/主题（可选）", key="sd_custom_topic")
 
         if st.button("生成题目", key="gen_custom", type="primary"):
             if not q_types:
@@ -533,11 +534,21 @@ with tab_gen:
                         difficulty=q_diff, topic=q_topic.strip() or "全部考点",
                     )
                 if _result:
-                    st.session_state["custom_questions"] = _result
+                    st.session_state["sd_custom_questions"] = _result
+                    # 保存到数据库
+                    from services.rag_pipeline import RAGPipeline as _RAG
+                    from database import get_session as _db_s, ConversationHistory as _CH
+                    _sid = _RAG().create_session(user_id=user_id, subject_id=subject_id, session_type="exam")
+                    _types_str = "、".join(q_types)
+                    _prompt = f"自定义出题：题型={_types_str}，数量={q_count}，难度={q_diff}，考点={q_topic.strip() or '全部考点'}"
+                    with _db_s() as _db:
+                        _db.add(_CH(session_id=_sid, role="user", content=_prompt))
+                        _db.add(_CH(session_id=_sid, role="assistant", content=_result))
                 else:
                     st.error("生成失败，请稍后重试。")
-        if st.session_state.get("custom_questions"):
-            st.markdown(st.session_state["custom_questions"])
-            st.download_button("导出 Markdown", data=st.session_state["custom_questions"],
+
+        if st.session_state.get("sd_custom_questions"):
+            st.markdown(st.session_state["sd_custom_questions"])
+            st.download_button("导出 Markdown", data=st.session_state["sd_custom_questions"],
                 file_name=f"{subject['name']}_自定义题目.md", mime="text/markdown",
                 key="dl_custom")
