@@ -194,7 +194,7 @@ with tab_chat:
             st.download_button("导出 Markdown", data=last_answer,
                 file_name=f"{subject['name']}_mindmap.md", mime="text/markdown",
                 key="mindmap_dl")
-            st.caption("💡 想导出为图片？将下方 Markdown 代码粘贴到 [markmap.js.org](https://markmap.js.org/repl)，点右上角可导出 SVG/PNG。")
+            st.caption("💡 导出为图片：将下方代码粘贴到 [markmap.js.org](https://markmap.js.org/repl) → 右上角导出 PNG/SVG；或粘贴到 [markmap.zuozuozuo.top](https://markmap.zuozuozuo.top) 直接下载 PNG。")
             with st.expander("📋 查看 / 复制 Markdown 源码"):
                 st.code(last_answer, language="markdown")
     else:
