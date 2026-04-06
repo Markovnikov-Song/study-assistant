@@ -185,6 +185,7 @@ with tab_chat:
             st.download_button("导出 Markdown", data=last_answer,
                 file_name=f"{subject['name']}_mindmap.md", mime="text/markdown",
                 key="mindmap_dl")
+            st.caption("💡 想导出为图片？将上方 Markdown 文件粘贴到 [markmap.js.org](https://markmap.js.org/repl)，点右上角可导出 SVG/PNG。")
     else:
         for msg in history_msgs:
             with st.chat_message("user" if msg["role"] == "user" else "assistant"):
