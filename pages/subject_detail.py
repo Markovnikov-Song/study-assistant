@@ -27,7 +27,6 @@ if not subject:
     st.error("学科不存在或无权限访问。")
     st.stop()
 
-# ── 顶部标题 + 标签页 ─────────────────────────────────────────────────────
 st.title(subject["name"])
 if subject.get("category"):
     st.caption(f"分类：{subject['category']}")
@@ -116,10 +115,10 @@ with tab_docs:
 # 统一学习助手对话界面
 # =============================================================================
 with tab_chat:
-    # 历史记录（折叠面板，手机友好）
+    # 历史记录（折叠面板）
     with st.expander("📋 历史记录", expanded=False):
         if st.button("＋ 新建对话", key="new_session_btn", use_container_width=True, type="primary"):
-            for k in ["current_session_id", "pending_question", "needs_confirm", "mindmap_result"]:
+            for k in ["current_session_id", "pending_question", "needs_confirm"]:
                 st.session_state.pop(k, None)
             st.rerun()
 
@@ -130,172 +129,162 @@ with tab_chat:
             ts = s["created_at"].strftime("%m-%d %H:%M")
             if st.button(f"{label}  {ts}", key=f"hist_{s['id']}", use_container_width=True):
                 st.session_state["current_session_id"] = s["id"]
-                st.session_state.pop("mindmap_result", None)
                 st.rerun()
 
-    # 对话区（全宽）
-    col_main = st
+    # 模式选择 + 通用知识开关
+    mode_col, toggle_col = st.columns([3, 2])
+    with mode_col:
+        mode = st.radio(
+            "模式",
+            ["💬 问答", "🔢 解题", "🗺 思维导图"],
+            horizontal=True,
+            key="chat_mode",
+            label_visibility="collapsed",
+        )
+    with toggle_col:
+        use_broad = st.checkbox(
+            "结合通用知识",
+            key="use_broad_toggle",
+            help="勾选后不限于已上传资料，AI 会标注来源",
+        )
 
-    # ── 右侧：对话区 ──────────────────────────────────────────────────────
-    with col_main:
+    mode_map = {"💬 问答": "qa", "🔢 解题": "solve", "🗺 思维导图": "mindmap"}
+    session_type = mode_map[mode]
 
-        # 模式选择 + 通用知识开关
-        mode_col, toggle_col = st.columns([3, 2])
-        with mode_col:
-            mode = st.radio(
-                "模式",
-                ["💬 问答", "🔢 解题", "🗺 思维导图"],
-                horizontal=True,
-                key="chat_mode",
-                label_visibility="collapsed",
+    # 确保当前会话类型匹配
+    past = get_subject_sessions(subject_id, user_id)
+    cur_sid = st.session_state.get("current_session_id")
+    if cur_sid:
+        past_types = {s["id"]: s["session_type"] for s in past}
+        if past_types.get(cur_sid) and past_types[cur_sid] != session_type:
+            cur_sid = None
+            st.session_state.pop("current_session_id", None)
+
+    if not cur_sid:
+        cur_sid = RAGPipeline().create_session(
+            user_id=user_id,
+            subject_id=subject_id,
+            session_type=session_type,
+        )
+        st.session_state["current_session_id"] = cur_sid
+        st.rerun()
+
+    history_msgs = get_session_history(cur_sid, user_id)
+
+    # 显示消息
+    if session_type == "mindmap":
+        last_answer = next(
+            (m["content"] for m in reversed(history_msgs) if m["role"] == "assistant"), None
+        )
+        if last_answer:
+            try:
+                from streamlit_markmap import markmap
+                markmap(last_answer, height=500)
+            except ImportError:
+                st.markdown(last_answer)
+            st.download_button("导出 Markdown", data=last_answer,
+                file_name=f"{subject['name']}_mindmap.md", mime="text/markdown",
+                key="mindmap_dl")
+    else:
+        for msg in history_msgs:
+            with st.chat_message("user" if msg["role"] == "user" else "assistant"):
+                st.markdown(msg["content"])
+                if msg.get("sources"):
+                    with st.expander("参考来源", expanded=False):
+                        for src in msg["sources"]:
+                            st.caption(f"· {src.get('filename','')}（片段 {src.get('chunk_index','')}）：{str(src.get('content',''))[:80]}…")
+
+    # 相关性不足确认
+    if st.session_state.get("needs_confirm"):
+        st.warning("已上传资料中未找到高度相关内容，请选择：")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("仅基于已上传资料", key="confirm_strict"):
+                _q = st.session_state.get("pending_question", "")
+                _mode = st.session_state.get("pending_mode", "strict")
+                with st.spinner("生成中…"):
+                    RAGPipeline().query(_q, subject_id, cur_sid, mode=_mode)
+                st.session_state.pop("needs_confirm", None)
+                st.rerun()
+        with c2:
+            if st.button("拓宽范围，结合通用知识", key="confirm_broad"):
+                _q = st.session_state.get("pending_question", "")
+                with st.spinner("生成中…"):
+                    RAGPipeline().query(_q, subject_id, cur_sid, mode="broad")
+                st.session_state.pop("needs_confirm", None)
+                st.rerun()
+
+    # 输入区
+    if session_type == "mindmap":
+        all_docs = DocumentService().list_documents(subject_id=subject_id, user_id=user_id)
+        done_docs = [d for d in all_docs if d["status"] == "completed"]
+        if not done_docs:
+            st.info("请先在「资料管理」上传并处理文件。")
+        else:
+            opts = ["全部资料"] + [d["filename"] for d in done_docs]
+            sel = st.selectbox("选择资料范围", opts, key="mindmap_sel")
+            doc_id_filter = None if sel == "全部资料" else next(
+                (d["id"] for d in done_docs if d["filename"] == sel), None
             )
-        with toggle_col:
-            use_broad = st.checkbox(
-                "结合通用知识",
-                key="use_broad_toggle",
-                help="勾选后不限于已上传资料，AI 会标注来源",
-            )
+            if st.button("生成思维导图", key="mindmap_gen", type="primary"):
+                with st.spinner("正在生成…"):
+                    try:
+                        mindmap_text = MindMapService().generate_from_subject(subject_id, doc_id_filter)
+                        from database import get_session as db_session, ConversationHistory
+                        with db_session() as db:
+                            db.add(ConversationHistory(session_id=cur_sid, role="user", content=f"生成思维导图：{sel}"))
+                            db.add(ConversationHistory(session_id=cur_sid, role="assistant", content=mindmap_text))
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+    else:
+        placeholder = "输入题目…" if session_type == "solve" else "输入问题…"
+        question = st.chat_input(placeholder, key="unified_chat_input")
 
-        # 模式映射
-        mode_map = {"💬 问答": "qa", "🔢 解题": "solve", "🗺 思维导图": "mindmap"}
-        session_type = mode_map[mode]
+        if question and question.strip():
+            st.session_state["pending_question"] = question.strip()
+            query_mode = "broad" if use_broad else ("solve" if session_type == "solve" else "strict")
+            st.session_state["pending_mode"] = query_mode
 
-        # 确保当前会话存在（切换模式时自动创建对应类型的新会话）
-        cur_sid = st.session_state.get("current_session_id")
-        if cur_sid:
-            past_types = {s["id"]: s["session_type"] for s in past}
-            if past_types.get(cur_sid) and past_types[cur_sid] != session_type:
-                cur_sid = None
-                st.session_state.pop("current_session_id", None)
+            with st.chat_message("user"):
+                st.markdown(question.strip())
 
-        if not cur_sid:
-            cur_sid = RAGPipeline().create_session(
-                user_id=user_id,
-                subject_id=subject_id,
-                session_type=session_type,
-            )
-            st.session_state["current_session_id"] = cur_sid
+            with st.spinner("生成中…"):
+                result = RAGPipeline().query(
+                    question=question.strip(),
+                    subject_id=subject_id,
+                    session_id=cur_sid,
+                    mode=query_mode,
+                )
+
+            if result.needs_confirmation:
+                st.session_state["needs_confirm"] = True
             st.rerun()
 
-        # ── 显示历史消息 ──────────────────────────────────────────────────
-        history_msgs = get_session_history(cur_sid, user_id)
-
-        if session_type == "mindmap":
-            # 思维导图：显示最后一次生成结果
-            last_answer = next(
-                (m["content"] for m in reversed(history_msgs) if m["role"] == "assistant"), None
-            )
-            if last_answer:
-                try:
-                    from streamlit_markmap import markmap
-                    markmap(last_answer, height=500)
-                except ImportError:
-                    st.markdown(last_answer)
-                st.download_button("导出 Markdown", data=last_answer,
-                    file_name=f"{subject['name']}_mindmap.md", mime="text/markdown",
-                    key="mindmap_dl")
-        else:
-            for msg in history_msgs:
-                with st.chat_message("user" if msg["role"] == "user" else "assistant"):
-                    st.markdown(msg["content"])
-                    if msg.get("sources"):
-                        with st.expander("参考来源", expanded=False):
-                            for src in msg["sources"]:
-                                st.caption(f"· {src.get('filename','')}（片段 {src.get('chunk_index','')}）：{str(src.get('content',''))[:80]}…")
-
-        # ── 相关性不足确认 ────────────────────────────────────────────────
-        if st.session_state.get("needs_confirm"):
-            st.warning("已上传资料中未找到高度相关内容，请选择：")
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("仅基于已上传资料", key="confirm_strict"):
-                    _q = st.session_state.get("pending_question", "")
-                    _mode = st.session_state.get("pending_mode", "strict")
-                    with st.spinner("生成中…"):
-                        r = RAGPipeline().query(_q, subject_id, cur_sid, mode=_mode)
-                    st.session_state.pop("needs_confirm", None)
+    # 导出 / 删除
+    if history_msgs:
+        st.divider()
+        ec1, ec2, ec3, ec4 = st.columns(4)
+        with ec1:
+            md = export_session_markdown(cur_sid, user_id)
+            st.download_button("📄 Markdown", data=md,
+                file_name=f"对话_{cur_sid}.md", mime="text/markdown",
+                key="exp_md", use_container_width=True)
+        with ec2:
+            html = export_session_html(cur_sid, user_id)
+            st.download_button("🌐 HTML", data=html,
+                file_name=f"对话_{cur_sid}.html", mime="text/html",
+                key="exp_html", use_container_width=True)
+        with ec3:
+            word = export_session_word(cur_sid, user_id)
+            st.download_button("📝 Word", data=word,
+                file_name=f"对话_{cur_sid}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="exp_word", use_container_width=True)
+        with ec4:
+            with st.popover("🗑 删除", use_container_width=True):
+                st.warning("删除后不可恢复")
+                if st.button("确认删除", key="del_session_btn", type="primary"):
+                    delete_session(cur_sid, user_id)
+                    st.session_state.pop("current_session_id", None)
                     st.rerun()
-            with c2:
-                if st.button("拓宽范围，结合通用知识", key="confirm_broad"):
-                    _q = st.session_state.get("pending_question", "")
-                    with st.spinner("生成中…"):
-                        r = RAGPipeline().query(_q, subject_id, cur_sid, mode="broad")
-                    st.session_state.pop("needs_confirm", None)
-                    st.rerun()
-
-        # ── 输入框 ────────────────────────────────────────────────────────
-        if session_type == "mindmap":
-            # 思维导图：选择资料范围 + 生成按钮
-            all_docs = DocumentService().list_documents(subject_id=subject_id, user_id=user_id)
-            done_docs = [d for d in all_docs if d["status"] == "completed"]
-            if not done_docs:
-                st.info("请先在「资料管理」上传并处理文件。")
-            else:
-                opts = ["全部资料"] + [d["filename"] for d in done_docs]
-                sel = st.selectbox("选择资料范围", opts, key="mindmap_sel")
-                doc_id_filter = None if sel == "全部资料" else next(
-                    (d["id"] for d in done_docs if d["filename"] == sel), None
-                )
-                if st.button("生成思维导图", key="mindmap_gen", type="primary"):
-                    with st.spinner("正在生成…"):
-                        try:
-                            mermaid = MindMapService().generate_from_subject(subject_id, doc_id_filter)
-                            # 保存到历史
-                            from database import get_session as db_session, ConversationHistory
-                            with db_session() as db:
-                                db.add(ConversationHistory(session_id=cur_sid, role="user", content=f"生成思维导图：{sel}"))
-                                db.add(ConversationHistory(session_id=cur_sid, role="assistant", content=mermaid))
-                            st.rerun()
-                        except Exception as e:
-                            st.error(str(e))
-        else:
-            placeholder = "输入题目…" if session_type == "solve" else "输入问题…"
-            question = st.chat_input(placeholder, key="unified_chat_input")
-
-            if question and question.strip():
-                st.session_state["pending_question"] = question.strip()
-                query_mode = "broad" if use_broad else ("solve" if session_type == "solve" else "strict")
-                st.session_state["pending_mode"] = query_mode
-
-                with st.chat_message("user"):
-                    st.markdown(question.strip())
-
-                with st.spinner("生成中…"):
-                    result = RAGPipeline().query(
-                        question=question.strip(),
-                        subject_id=subject_id,
-                        session_id=cur_sid,
-                        mode=query_mode,
-                    )
-
-                if result.needs_confirmation:
-                    st.session_state["needs_confirm"] = True
-                st.rerun()
-
-        # ── 导出 / 删除工具栏 ─────────────────────────────────────────────
-        if history_msgs:
-            st.divider()
-            ec1, ec2, ec3, ec4 = st.columns(4)
-            with ec1:
-                md = export_session_markdown(cur_sid, user_id)
-                st.download_button("📄 Markdown", data=md,
-                    file_name=f"对话_{cur_sid}.md", mime="text/markdown",
-                    key="exp_md", use_container_width=True)
-            with ec2:
-                html = export_session_html(cur_sid, user_id)
-                st.download_button("🌐 HTML", data=html,
-                    file_name=f"对话_{cur_sid}.html", mime="text/html",
-                    key="exp_html", use_container_width=True)
-            with ec3:
-                word = export_session_word(cur_sid, user_id)
-                st.download_button("📝 Word", data=word,
-                    file_name=f"对话_{cur_sid}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key="exp_word", use_container_width=True)
-            with ec4:
-                with st.popover("🗑 删除", use_container_width=True):
-                    st.warning("删除后不可恢复")
-                    if st.button("确认删除", key="del_session_btn", type="primary"):
-                        delete_session(cur_sid, user_id)
-                        st.session_state.pop("current_session_id", None)
-                        st.rerun()
