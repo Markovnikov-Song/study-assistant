@@ -287,7 +287,9 @@ with tab_chat:
                     import base64, io as _io
                     buf = _io.BytesIO()
                     pasted.image_data.save(buf, format="PNG")
-                    img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+                    img_bytes = buf.getvalue()
+                    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+                    st.session_state[f"{paste_key}_img"] = img_bytes
                     with st.spinner("正在识别…"):
                         from services.llm_service import LLMService
                         try:
@@ -301,6 +303,10 @@ with tab_chat:
                             st.error(f"识别失败：{e}")
                 elif pasted.image_data is None:
                     st.session_state.pop(paste_processed_key, None)
+
+                # 显示已粘贴的图片预览
+                if st.session_state.get(f"{paste_key}_img"):
+                    st.image(st.session_state[f"{paste_key}_img"], caption="已粘贴图片", use_container_width=True)
             except ImportError:
                 st.caption("安装 streamlit-paste-button 支持粘贴")
 
@@ -337,6 +343,8 @@ with tab_chat:
         if question and question.strip():
             st.session_state.pop(f"{session_type}_ocr_prefill", None)
             st.session_state.pop("ocr_prefill", None)
+            st.session_state.pop(f"{paste_key}_img", None)
+            st.session_state.pop(f"{paste_key}_processed", None)
             st.session_state["pending_question"] = question.strip()
             query_mode = "broad" if use_broad else ("solve" if session_type == "solve" else "strict")
             st.session_state["pending_mode"] = query_mode
